@@ -383,9 +383,9 @@ var queryHero = function (cb) {
   var num = 100;
   for (var i = 0; i < 100; i++) {
     (function (i){
-      cb && cb(null, {
+      cb && cb(null, [{
         uid : i
-      })
+      }])
     })(i)
   }
   
