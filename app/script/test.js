@@ -429,7 +429,7 @@ if (typeof actor !== 'undefined'){
 
 // temporary code
 // queryHero(client, 1, offset, function(error, users){
-queryHero(client, 1, 0, function(error, users){
+queryHero(100, 1, 0, function(error, users){
 // temporary code
   console.log('QueryHero ~ offset = ', offset);
   var user = users[0];
