@@ -105,6 +105,7 @@ pomelo.initWebSocket = function(url,cb){
 };
 
 pomelo.disconnect = function() {
+  console.log('断开连接')
   if(socket) {
     if(socket.disconnect) socket.disconnect();
     if(socket.close) socket.close();
@@ -132,9 +133,9 @@ pomelo.request = function(route, msg, cb) {
 
   reqId++;
   sendMessage(reqId, route, msg);
-
   callbacks[reqId] = cb;
   routeMap[reqId] = route;
+
 };
 
 pomelo.notify = function(route, msg) {
@@ -144,7 +145,6 @@ pomelo.notify = function(route, msg) {
 
 var sendMessage = function(reqId, route, msg) {
   var type = reqId ? Message.TYPE_REQUEST : Message.TYPE_NOTIFY;
-
   //compress message by protobuf
   var protos = !!pomelo.data.protos?pomelo.data.protos.client:{};
   if(!!protos[route]){
@@ -152,13 +152,11 @@ var sendMessage = function(reqId, route, msg) {
   }else{
     msg = Protocol.strencode(JSON.stringify(msg));
   }
-
   var compressRoute = 0;
   if(pomelo.dict && pomelo.dict[route]){
     route = pomelo.dict[route];
     compressRoute = 1;
   }
-
   msg = Message.encode(reqId, type, compressRoute, route, msg);
   var packet = Package.encode(Package.TYPE_DATA, msg);
   send(packet);
@@ -376,121 +374,43 @@ var initData = function(data) {
 
 /////////////////////////////////////////////////////////////
 
-pomelo.player = null;
-pomelo.uid = null;
 
-var queryHero = function (cb) {
-  var num = 100;
-  for (var i = 0; i < 100; i++) {
-    (function (i){
-      cb && cb(null, [{
-        uid : i
-      }])
-    })(i)
-  }
-  
-}
+pomelo.init({host: '139.196.106.223', port: 3016, log: true}, function() {
+  var uid = Math.floor(100000 * Math.random())
+  var roomId = Math.floor(100000 * Math.random())
+  pomelo.request('gate.gateHandler.queryEntry', {roomId: roomId, uid:uid}, function(data) {
 
-var START = 'start';
-var END = 'end';
-var DirectionNum = 8;
+    pomelo.disconnect();
+    var _host = data.data.host;
+    var _port = data.data.clientPort;
 
-var EntityType = {
-  PLAYER: 'player',
-  NPC: 'npc',
-  MOB: 'mob',
-  EQUIPMENT: 'equipment',
-  ITEM: 'item'
-};
-
-var ActFlagType = {
-  ENTRY: 0,
-  ENTER_SCENE: 1,
-  ATTACK: 2,
-  MOVE: 3,
-  PICK_ITEM: 4
-};
-
-var monitor = function(type, name, reqId) {
-  if (typeof actor !== 'undefined'){
-    actor.emit(type, name, reqId);
-  } else {
-    console.error(Array.prototype.slice.call(arguments, 0));
-  }
-}
-
-var connected = false;
-
-var offset = (typeof actor !== 'undefined') ? actor.id : 1;
-
-if (typeof actor !== 'undefined'){
-  console.log(offset + ' ' + actor.id);
-}
-
-// temporary code
-// queryHero(client, 1, offset, function(error, users){
-queryHero(function(error, users){
-// temporary code
-  console.log('QueryHero ~ offset = ', offset);
-  var user = users[0];
-
-  // monitor(START, 'enterScene', ActFlagType.ENTER_SCENE);
-  console.log('QueryHero is running ...');
-  console.log('QueryHero ~ user = ', JSON.stringify(user));
-  queryEntry(user.uid, function(host, port) {
-    entry(host, port, user.token, function() {
-      connected = true;
+    pomelo.init({host: _host, port: _port, log: true}, function() {
+      // console.log('真正进入房间', uid)
+      pomelo.request('connector.entryHandler.entry', {roomId: roomId, uid:uid}, function(data) {
+        // afterLogin(pomelo,data);
+        // console.log('进入拉 啊 ', data)
+        setInterval(function (){
+          pomelo.request("painter.painterHandler.send", {
+            uid : uid,
+            msg : '这是小测试小时' + Math.random()
+          }, function (data) {
+            console.log('@@@@@@拿到消息', JSON.stringify(data))
+          });
+        }, 20)
+        // pomelo.request("painter.painterHandler.send", {
+        //     uid : uid,
+        //     msg : '这是小测试小时' + Math.random()
+        //   }, function (data) {
+        //     // console.log('@@@@@@拿到消息', data)
+        //   });
+        
+      });
     });
   });
 });
 
-function queryEntry(uid, callback) {
-  pomelo.init({host: '127.0.0.1', port: 3014, log: true}, function() {
-    pomelo.request('gate.gateHandler.queryEntry', {uid: uid}, function(data) {
-      console.log('QueryEntry is running ...');
-      pomelo.disconnect();
-      if(data.code === 2001) {
-        console.log('Servers error!');
-        return;
-      }
-      callback(data.host, data.port);
-    });
-  });
-}
 
-function entry(host, port, token, callback) {
-  _host = host;
-  _port = port;
-  _token = token;
-  if (!!socket) {
-    return;
-  }
-  // 初始化socketClient
-  pomelo.init({host: host, port: port, log: true}, function() {
-    // monitor(START, 'entry', ActFlagType.ENTRY);
-    pomelo.request('connector.entryHandler.entry', {token: token}, function(data) {
-      // monitor(END, 'entry', ActFlagType.ENTRY);
-      if (callback) {
-        callback(data.code);
-      }
 
-      if (data.code == 1001) {
-        console.log('Login fail!');
-        return;
-      } else if (data.code == 1003) {
-        console.log('Username not exists!');
-        return;
-      }
-
-      if (data.code != 200) {
-        console.log('Login Fail!');
-        return;
-      }
-
-      afterLogin(pomelo,data);
-    });
-  });
-}
 
 var afterLogin = function(pomelo,data){
   pomelo.player = null;
@@ -513,26 +433,35 @@ var afterLogin = function(pomelo,data){
    * 处理登录请求
    */
   var login = function(data){
-    var player = data.player;
-    if (player.id <= 0) {
-      console.log("User is invalid! data = %j", data);
-    } else {
-      pomelo.uid = player.userId;
-      pomelo.player = player;
-      msgTempate.uid = pomelo.uid;
-      msgTempate.playerId = pomelo.player.id;
-      msgTempate.from = pomelo.player.name;
-      msgTempate.areaId = pomelo.player.areaId;
-      setTimeout(function(){
-        enterScene();
-      }, 0);
-    }
+    console.log('---------------------------')
+    console.log(data)
+    console.log('---------------------------')
+    // if (player.id <= 0) {
+    //   console.log("User is invalid! data = %j", data);
+    // } else {
+    //   pomelo.uid = data.uid;
+    //   pomelo.player = data;
+    //   msgTempate.uid = pomelo.uid;
+    //   msgTempate.playerId = pomelo.player.uid;
+    //   msgTempate.from = pomelo.player.name || '没有名字'
+    //   msgTempate.areaId = pomelo.player.areaId;
+    //   setTimeout(function(){
+    //     enterScene();
+    //   }, 0);
+    // }
+    pomelo.request("painter.painterHandler.send", {
+      uid : data.uid,
+      msg : '这是小测试小时' + Math.random()
+    }, function (data) {
+      console.log('@@@@@@拿到消息', data)
+    });
+    
   };
 
   login(data);
 
   var enterScene = function() {
-    var msg = {uid: pomelo.uid, playerId: pomelo.player.id, areaId: pomelo.player.areaId};
+    var msg = {uid: pomelo.uid, playerId: pomelo.player.uid, areaId: pomelo.player.areaId};
     // monitor(START, 'enterScene', ActFlagType.ENTER_SCENE);
     pomelo.request("area.playerHandler.enterScene", msg, enterSceneRes);
     console.log('1 ~ EnterScene ~ areaId = %d, playerId = %d, name = %s',
@@ -956,4 +885,3 @@ var afterLogin = function(pomelo,data){
   }
 
 };
-
